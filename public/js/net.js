@@ -24,7 +24,8 @@ export class Net {
         uid: this.profile.uid,
         name: this.profile.name,
         token: this.token || "",
-        ...profile.pos,
+        look: this.profile.look || null,
+        ...this.profile.pos,
       });
       while (this.outbox.length) {
         const msg = this.outbox.shift();

@@ -18,13 +18,16 @@
     <p class="boot-kicker">一场没有终点的夜</p>
     <h1 class="boot-title">世界公墓</h1>
     <p class="boot-line">这里没有门。你已经在里面了。</p>
-    <p class="boot-desc">你可以为任何失去的东西立一座碑：一个人、一只猫、一段关系、<br />一个旧账号、一个再也不会回来的时代。</p>
-    <label class="boot-label" for="name-input">别人会这样称呼你的影子</label>
+    <p class="boot-desc">这里纪念逝去的任何事物。一个人、一只猫、一个地方、一件旧物、<br />一段关系、一个念头、一个再也不会回来的时代。</p>
+    <label class="boot-label" for="name-input">别人会这样称呼你</label>
     <input id="name-input" class="boot-input" maxlength="20" placeholder="无名者" autocomplete="off" />
     <label class="boot-label" for="secret-input">只有你知道的一句话</label>
     <input id="secret-input" class="boot-input" type="password" maxlength="64" placeholder="用来证明这个账号还是你的" autocomplete="off" />
+    <p class="boot-label look-label">你走进来时的样子</p>
+    <div id="look-coats" class="look-row"></div>
+    <div id="look-hairs" class="look-row hairs"></div>
     <button id="enter" class="boot-btn">走进雾里</button>
-    <p class="boot-hint">名字所有人都看得见；那句话谁都不会看见，也不会被上传。<br />W A S D 移动 · 鼠标看 · Shift 跑 · 空格 跳 · C 蹲 · F 坐 · H 说明</p>
+    <p class="boot-hint">名字所有人都看得见；那句话谁都不会看见，也不会被上传。<br />W A S D 走 · 鼠标看 · G 跪拜 · Z 鞠躬 · V 合十 · B 默哀 · F 坐 · H 说明</p>
   </div>
 </section>
 
@@ -36,43 +39,49 @@
   <div id="crosshair" class="crosshair"></div>
   <div id="prompt" class="prompt"></div>
   <div id="status" class="status">
-    <span id="peer-count">0</span> 个影子 · <span id="grave-count">0</span> 座碑
+    <span id="peer-count">0</span> 人在园中 · <span id="grave-count">0</span> 座纪念
     <button id="sound-toggle" class="sound-toggle" type="button" title="也可以按 M" aria-pressed="true" aria-label="关闭所有声音">声音 · 开</button>
   </div>
   <div id="guide" class="guide hidden"></div>
   <div id="compass" class="compass"></div>
-  <div id="seat-hint" class="seat-hint hidden">你坐下了。按 F 起身。</div>
+  <div id="seat-hint" class="seat-hint hidden"></div>
 </div>
 
 <!-- 立碑面板 -->
 <section id="raise-panel" class="panel hidden" role="dialog" aria-modal="true" aria-labelledby="raise-tag">
   <div class="panel-head">
-    <span class="panel-tag" id="raise-tag">正在刻一块新碑</span>
+    <span class="panel-tag" id="raise-tag">正在留下一座纪念</span>
     <button id="raise-cancel" class="x">离开这里</button>
   </div>
 
   <div class="field">
-    <label for="raise-name">这一座碑，献给谁</label>
-    <input id="raise-name" maxlength="24" placeholder="一个名字，或一个称呼" autocomplete="off" />
+    <label>这次纪念的是</label>
+    <div id="raise-subjects" class="chips"></div>
+    <div class="tone-scale"><span>人、生灵、地方、物件、关系、念头、时代，或任何你想记住的事物</span></div>
   </div>
 
   <div class="field">
-    <label for="raise-born">生卒（可留空）</label>
+    <label id="raise-name-label" for="raise-name">它叫什么</label>
+    <input id="raise-name" maxlength="24" placeholder="一个人、一件事，或任何你想记住的" autocomplete="off" />
+  </div>
+
+  <div class="field">
+    <label id="raise-life-label" for="raise-born">年份（可留空）</label>
     <div class="life-row">
       <input id="raise-born" maxlength="4" placeholder="生于，如 1954" autocomplete="off" inputmode="numeric" />
       <span class="life-dash">—</span>
       <input id="raise-died" maxlength="4" placeholder="卒于，如 2021" autocomplete="off" inputmode="numeric" />
     </div>
-    <div class="tone-scale"><span>只写年份。写不出来就空着，碑上留白</span></div>
+    <div class="tone-scale" id="raise-life-note"><span>用得到就写年份，用不到就空着</span></div>
   </div>
 
   <div class="field">
-    <label for="raise-epitaph">碑上只刻一行字</label>
+    <label id="raise-epitaph-label" for="raise-epitaph">上面只刻一行字</label>
     <input id="raise-epitaph" maxlength="60" placeholder="一句话，会被路过的人读到" autocomplete="off" />
   </div>
 
   <div class="field">
-    <label for="raise-story">碑后面的事（可留空）</label>
+    <label id="raise-story-label" for="raise-story">想记住的事（可留空）</label>
     <textarea id="raise-story" maxlength="500" rows="3" placeholder="想说的话，写给会停下来的人"></textarea>
     <div id="story-hints" class="chips story-hints"></div>
     <div class="tone-scale"><span>写不出来就点一句，它会填进上面那格，你可以改</span></div>
@@ -102,13 +111,13 @@
   </div>
 
   <div class="field">
-    <label for="raise-voice">他说话的样子（可留空）</label>
-    <input id="raise-voice" maxlength="100" placeholder="比如：句子很短，总先叹一口气，爱说“算了”" autocomplete="off" />
-    <div class="tone-scale"><span>填了，才能站在碑前对他说一句话</span></div>
+    <label id="raise-voice-label" for="raise-voice">留下的口气（可留空）</label>
+    <input id="raise-voice" maxlength="100" placeholder="它说话、响，或还在时的样子" autocomplete="off" />
+    <div class="tone-scale" id="raise-voice-note"><span>填了，站在前面就可以对它说一句话</span></div>
   </div>
 
   <div class="field">
-    <label for="raise-photo">给他放一张照片（可留空）</label>
+    <label id="raise-photo-label" for="raise-photo">放一张照片（可留空）</label>
     <div class="media-row">
       <label class="media-pick">
         <input id="raise-photo" type="file" accept="image/*" hidden />
@@ -121,7 +130,7 @@
   </div>
 
   <div class="field">
-    <label>留一段他的声音（可留空）</label>
+    <label id="raise-audio-label">留一段声音（可留空）</label>
     <div class="media-row">
       <button type="button" id="raise-record" class="media-pick">录一段（最多八秒）</button>
       <label class="media-pick">
@@ -154,18 +163,19 @@
   </div>
 
   <div class="panel-foot sticky-actions">
-    <span class="panel-note">碑立下之后，只有你能让它沉睡，或者亲手拆掉它。</span>
-    <button id="raise-confirm" class="primary">立碑</button>
+    <span class="panel-note">立下之后，只有你能让它沉睡，或者亲手拆掉它。</span>
+    <button id="raise-confirm" class="primary">立下</button>
   </div>
 </section>
 
 <!-- 阅读面板 -->
 <section id="read-panel" class="panel read hidden" role="dialog" aria-modal="true" aria-labelledby="read-name">
   <div class="panel-head">
-    <span id="read-author" class="panel-tag">佚名 立的碑</span>
+    <span id="read-author" class="panel-tag">佚名留下的纪念</span>
     <button id="read-close" class="x">退后一步</button>
   </div>
 
+  <p id="read-subject" class="read-subject hidden"></p>
   <h2 id="read-name" class="read-name"></h2>
   <p id="read-life" class="read-life hidden"></p>
   <img id="read-photo" class="read-photo" alt="" hidden />
@@ -209,11 +219,11 @@
     <button id="echo-close" class="x">退后一步</button>
   </div>
   <h2 id="echo-name" class="read-name"></h2>
-  <p class="echo-note">这不是他。是他留在碑上的一点回声——知道的不多，也会记错。</p>
+  <p id="echo-note" class="echo-note">这不是它本身。是留在这里的一点回声——知道的不多，也会记错。</p>
   <div id="echo-log" class="echo-log"></div>
   <div class="panel-foot sticky-actions">
     <input id="echo-input" maxlength="60" placeholder="说一句话" autocomplete="off" />
-    <button id="echo-send" class="primary">说给他听</button>
+    <button id="echo-send" class="primary">说一句</button>
   </div>
 </section>
 
@@ -224,17 +234,23 @@
     <table>
       <tr><td>W A S D</td><td>走。没有地图，没有路标，方向由你决定。</td></tr>
       <tr><td>Shift</td><td>跑起来。</td></tr>
-      <tr><td>空格</td><td>跳。按住会浮起——离魂视角，能俯瞰整片墓园。</td></tr>
+      <tr><td>空格</td><td>跳。按住会浮起，能俯瞰整片墓园。人还是人，只是离开了地面。</td></tr>
       <tr><td>C</td><td>蹲下，看得更清楚一点碑脚的字。</td></tr>
-      <tr><td>F</td><td>坐下。坐下时你只能看，不能走。</td></tr>
-      <tr><td>E</td><td>靠近碑：读它。站在空地上：为某人立碑。</td></tr>
-      <tr><td>R</td><td>碑前站定：如果碑上留过“他说话的样子”，可以对他说一句话。</td></tr>
+      <tr><td>F</td><td>坐下。坐下时你只能看，不能走。别人看得到你坐着。</td></tr>
+      <tr><td>G</td><td>跪拜。再按一次起身。别的人会看见你跪在那里。</td></tr>
+      <tr><td>Z</td><td>鞠躬。鞠一下，然后自己起来。</td></tr>
+      <tr><td>V</td><td>双手合十。走开，或者再按一次，手就放下。</td></tr>
+      <tr><td>B</td><td>低头默哀。走开就抬起头。</td></tr>
+      <tr><td>E</td><td>靠近纪念：读它。站在空地上：为任何逝去的事物立一座。</td></tr>
+      <tr><td>R</td><td>站在前面：如果留过“口气”，可以对它说一句话。</td></tr>
       <tr><td>H</td><td>这张说明。</td></tr>
       <tr><td>M</td><td>把声音关掉，或者重新打开。</td></tr>
       <tr><td>Tab</td><td>看看附近有哪些碑，朝哪个方向走。</td></tr>
     </table>
     <p class="help-note">这里没有任务、等级、排行榜。别人留下的影子不能和你说话，但你能看见他们停在哪座碑前。如果你们恰好同时站在同一座碑前，站得够久，会有一圈光浮起来。</p>
-    <p class="help-note">你可以把人放在四种地方：立一块石碑；走进林子，把木牌挂在树根上；走到湖边，放一只船让它漂着；或者放一盏灯到天上去。石头、木牌、船、灯，都只属于你。</p>
+    <p class="help-note">要纪念的可以是任何人、任何事物。立的时候先选它是什么：人、生灵、地方、物件、关系、念头、时代，或者就写「任何事物」。旧的碑没有这一项，也照样立在那儿。</p>
+    <p class="help-note">你可以把它放在四种地方：立一块石碑；走进林子，把木牌挂在树根上；走到湖边，放一只船让它漂着；或者放一盏灯到天上去。</p>
+    <p class="help-note">进门前可以选衣服和头发。园子里的人是有身体的：墨衣、灰袍、松绿、霜白或赭衣。别人看见的就是这个样子。</p>
     <p class="help-note"><b>名字和那句话</b>：名字所有人都看得见，那句话只用来证明这个账号还是你的。它不会上传到别人的浏览器，但也找不回来——忘了就进不去了，只能换个名字重新开始。</p>
     <p class="help-note">你自己立的碑，随时可以回去按 E，在面板底下「改这块碑」——名字、那行字、碑后面的故事、碑型、遗物、声音、照片放哪儿，都能改；位置不能改，它已经在那儿了。</p>
     <button id="help-close" class="primary">知道了</button>
@@ -257,6 +273,8 @@
   <div id="touch-stick" class="touch-stick" aria-hidden="true"><div id="touch-knob" class="touch-knob"></div></div>
   <div class="touch-actions">
     <button id="touch-act" class="touch-act">读 / 立</button>
+    <button id="touch-kneel" class="touch-list">跪拜</button>
+    <button id="touch-bow" class="touch-list">鞠躬</button>
     <button id="touch-list" class="touch-list">名录</button>
   </div>
 </div>
@@ -264,7 +282,7 @@
 <div id="intro" class="intro hidden">
   <p class="intro-main">这里是世界公墓。</p>
   <p class="intro-sub">走两步，找一座碑，站一会儿。</p>
-  <p class="intro-keys">WASD 走 · 鼠标看 · E 读 / 立碑 · Tab 名录</p>
+  <p class="intro-keys">WASD 走 · 鼠标看 · E 读 / 立 · G 跪拜 · Tab 名录</p>
 </div>
 
 </body>

@@ -67,18 +67,18 @@ export class World {
     const scene = this.scene;
     const world = RULES.world;
 
-    scene.background = new THREE.Color(0x05080c);
-    scene.fog = new THREE.FogExp2(0x070b11, world.fogDensity);
+    scene.background = new THREE.Color(0x070b10);
+    scene.fog = new THREE.FogExp2(0x101820, world.fogDensity * 0.86);
 
-    // 光
-    const hemi = new THREE.HemisphereLight(0x3d5560, 0x0e1412, 1.05);
+    // 月光是冷的，灯笼是暖的。两样都在，园子才有层次。
+    const hemi = new THREE.HemisphereLight(0x8ea8b4, 0x1a221c, 0.72);
     scene.add(hemi);
 
-    const moonLight = new THREE.DirectionalLight(0xb0d6e6, 0.95);
+    const moonLight = new THREE.DirectionalLight(0xd7e8f0, 1.35);
     moonLight.position.set(-70, 90, -50);
     scene.add(moonLight);
 
-    const fill = new THREE.DirectionalLight(0x33505a, 0.4);
+    const fill = new THREE.DirectionalLight(0x3d5c68, 0.28);
     fill.position.set(60, 20, 40);
     scene.add(fill);
 
@@ -88,6 +88,7 @@ export class World {
     this.buildWater();
     this.buildTrees();
     this.buildGrass();
+    this.buildDressing();
     return this;
   }
 
@@ -97,8 +98,8 @@ export class World {
       side: THREE.BackSide,
       depthWrite: false,
       uniforms: {
-        top: { value: new THREE.Color(0x04060a) },
-        bottom: { value: new THREE.Color(0x0d1a22) },
+        top: { value: new THREE.Color(0x05070c) },
+        bottom: { value: new THREE.Color(0x1a2c36) },
         moon: { value: this.moonDir.clone() },
       },
       vertexShader: `
@@ -219,7 +220,7 @@ export class World {
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = size;
     const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#5d6b60";
+    ctx.fillStyle = "#4a5850";
     ctx.fillRect(0, 0, size, size);
 
     // 土、苔、碎石的斑驳
@@ -382,8 +383,8 @@ export class World {
       spots.push({ x, z, scale: 0.78 + rnd() * 0.55 });
     }
 
-    const barkMat = new THREE.MeshStandardMaterial({ color: 0x1e2523, roughness: 1 });
-    const crownMat = new THREE.MeshStandardMaterial({ color: 0x131a18, roughness: 1, flatShading: true });
+    const barkMat = new THREE.MeshStandardMaterial({ color: 0x2c3330, roughness: 0.96 });
+    const crownMat = new THREE.MeshStandardMaterial({ color: 0x1b2822, roughness: 0.94, flatShading: true });
 
     const trunkGeo = new THREE.CylinderGeometry(0.13, 0.23, 4.2, 6, 1);
     trunkGeo.translate(0, 2.1, 0);
@@ -483,6 +484,111 @@ export class World {
     this.grass = mesh;
   }
 
+  /**
+   * 园子里的摆设：石径、入口石柱、灯笼。
+   * 位置用固定种子，所有人看见的是同一条路。这些东西不挡路，只是让地面不再是一块空的布。
+   */
+  buildDressing() {
+    const rnd = seeded(20261122);
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x6d726c, roughness: 0.94 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x3a403c, roughness: 0.92 });
+    const paperMat = new THREE.MeshStandardMaterial({
+      color: 0xf0e2c4,
+      emissive: 0xffb15a,
+      emissiveIntensity: 0.85,
+      roughness: 0.45,
+    });
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x3a2a22, roughness: 0.9 });
+    const flowerMat = new THREE.MeshStandardMaterial({ color: 0xe7e0d2, roughness: 0.8 });
+
+    const stones = [];
+    for (let i = 0; i < 36; i++) {
+      const t = i / 35;
+      const z = 80 - t * 62;
+      const x = Math.sin(t * 2.4) * 5.5;
+      if (lakeDist(x, z) < RULES.world.lake.r + 2) continue;
+      stones.push({ x, z, s: 0.85 + rnd() * 0.45, ry: rnd() * Math.PI });
+    }
+    const stoneGeo = new THREE.CylinderGeometry(0.34, 0.4, 0.05, 6);
+    const stoneMesh = new THREE.InstancedMesh(stoneGeo, stoneMat, stones.length);
+    const dummy = new THREE.Object3D();
+    stones.forEach((s, i) => {
+      dummy.position.set(s.x, heightAt(s.x, s.z) + 0.03, s.z);
+      dummy.rotation.set(0, s.ry, 0);
+      dummy.scale.set(s.s, 1, s.s * 0.82);
+      dummy.updateMatrix();
+      stoneMesh.setMatrixAt(i, dummy.matrix);
+    });
+    stoneMesh.instanceMatrix.needsUpdate = true;
+    stoneMesh.frustumCulled = false;
+    this.scene.add(stoneMesh);
+
+    const gateY = heightAt(0, 82);
+    const pillarGeo = new THREE.BoxGeometry(0.38, 2.15, 0.38);
+    for (const x of [-2.15, 2.15]) {
+      const pillar = new THREE.Mesh(pillarGeo, stoneMat);
+      pillar.position.set(x, gateY + 1.05, 82);
+      this.scene.add(pillar);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.12, 0.52), darkMat);
+      cap.position.set(x, gateY + 2.16, 82);
+      this.scene.add(cap);
+    }
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(4.7, 0.16, 0.28), darkMat);
+    beam.position.set(0, gateY + 2.28, 82);
+    this.scene.add(beam);
+
+    const lanternSpots = [
+      { x: -3.4, z: 76 },
+      { x: 3.6, z: 64 },
+      { x: -4.2, z: 50 },
+      { x: 4.8, z: 36 },
+      { x: -2.2, z: 22 },
+      { x: RULES.world.lake.x + RULES.world.lake.r + 3.2, z: RULES.world.lake.z + 1 },
+      { x: RULES.world.lake.x - 2, z: RULES.world.lake.z - RULES.world.lake.r - 2.4 },
+    ];
+    this.lanterns = [];
+    for (const spot of lanternSpots) {
+      if (lakeDist(spot.x, spot.z) < RULES.world.lake.r + 0.4) continue;
+      const y = heightAt(spot.x, spot.z);
+      const g = new THREE.Group();
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.36), stoneMat);
+      base.position.y = 0.08;
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 1.15, 6), woodMat);
+      post.position.y = 0.7;
+      const house = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.32, 0.28), paperMat);
+      house.position.y = 1.38;
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.16, 4), darkMat);
+      roof.position.y = 1.62;
+      roof.rotation.y = Math.PI / 4;
+      g.add(base, post, house, roof);
+      g.position.set(spot.x, y, spot.z);
+      this.scene.add(g);
+      const light = new THREE.PointLight(0xffb067, 3.2, 8.5, 2);
+      light.position.set(spot.x, y + 1.4, spot.z);
+      this.scene.add(light);
+      this.lanterns.push(light);
+    }
+
+    const flowerCount = 48;
+    const flowerGeo = new THREE.ConeGeometry(0.05, 0.16, 5);
+    const flowers = new THREE.InstancedMesh(flowerGeo, flowerMat, flowerCount);
+    for (let i = 0; i < flowerCount; i++) {
+      const host = stones[Math.floor(rnd() * stones.length)];
+      const a = rnd() * Math.PI * 2;
+      const r = 0.45 + rnd() * 0.7;
+      const x = host.x + Math.cos(a) * r;
+      const z = host.z + Math.sin(a) * r;
+      dummy.position.set(x, heightAt(x, z) + 0.08, z);
+      dummy.rotation.set(0, rnd() * 2, 0);
+      dummy.scale.setScalar(0.7 + rnd() * 0.8);
+      dummy.updateMatrix();
+      flowers.setMatrixAt(i, dummy.matrix);
+    }
+    flowers.instanceMatrix.needsUpdate = true;
+    flowers.frustumCulled = false;
+    this.scene.add(flowers);
+  }
+
   update(dt, camera) {
     this.time += dt;
     if (this.stars) this.stars.rotation.y = this.time * 0.004;
@@ -492,6 +598,10 @@ export class World {
     if (this.shine) {
       this.shine.position.x = RULES.world.lake.x + 6 + Math.sin(this.time * 0.23) * 1.6;
       this.shine.material.opacity = 0.13 + Math.abs(Math.sin(this.time * 0.4)) * 0.05;
+    }
+    if (this.lanterns) {
+      const pulse = 0.82 + Math.sin(this.time * 1.7) * 0.08;
+      for (const light of this.lanterns) light.intensity = 3.2 * pulse;
     }
   }
 }

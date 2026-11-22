@@ -3,6 +3,7 @@ import { World, heightAt, isDeepWater, lakeDist } from "./world.js";
 import { GraveSystem } from "./graves.js";
 import { Player } from "./player.js";
 import { Peers } from "./peers.js";
+import { applyLook, applyPose, createFigure, createHands } from "./figure.js";
 import { UI } from "./ui.js";
 import { Net } from "./net.js";
 import { Sound } from "./audio.js";
@@ -13,7 +14,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight, false);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+renderer.toneMappingExposure = 1.02;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.setClearColor(0x05080c, 1);
 
@@ -23,13 +24,21 @@ const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerH
 const world = new World(scene, renderer).build();
 const graves = new GraveSystem(scene);
 const peers = new Peers(scene);
+const ui = new UI();
+const localFigure = createFigure(ui.look, { local: true });
+scene.add(localFigure.root);
+const hands = createHands(ui.look);
+camera.add(hands.root);
+ui.onLook = (look) => {
+  applyLook(localFigure, look);
+  hands.applyLook(look);
+};
 const sound = new Sound();
 const obstacles = [];
 const player = new Player(camera, canvas, obstacles);
 const TOUCH_MODE = new URLSearchParams(location.search).has("touch") ||
   !!window.matchMedia?.("(pointer: coarse)").matches;
 player.touchMode = TOUCH_MODE;
-const ui = new UI();
 
 // —— 空气。贴地的三层薄雾，和一层浮尘：夜里有厚度，园子才不像一张平面。
 const mistTex = (() => {
@@ -54,7 +63,7 @@ for (let i = 0; i < 3; i += 1) {
     new THREE.PlaneGeometry(52, 52),
     new THREE.MeshBasicMaterial({
       map: mistTex,
-      color: 0x6d8f8c,
+      color: 0x8d9a96,
       transparent: true,
       opacity: 0.025 + i * 0.009,
       depthWrite: false,
@@ -173,8 +182,16 @@ function enterAsIdentity(token, name) {
     document.getElementById("touch-ui").classList.remove("hidden");
     document.querySelector(".intro-keys").textContent = "左边走 · 右边看 · 读 / 立 · 名录";
   }
+  ui.persistLook();
   connect();
-  setTimeout(() => ui.toast(TOUCH_MODE ? "走到一块空地上，点「读 / 立」立一座碑。" : "走到一块空地上，按 E 立一座碑。", 5200), 1800);
+  setTimeout(
+    () =>
+      ui.toast(
+        TOUCH_MODE ? "走到一块空地上，点「读 / 立」，为任何逝去的事物留一座纪念。" : "走到一块空地上，按 E，为任何逝去的事物留一座纪念。",
+        5200
+      ),
+    1800
+  );
 }
 
 ui.el.enter.addEventListener("click", async () => {
@@ -277,7 +294,9 @@ function connect() {
         localGraveBook.set(g.id, g);
       }
       // 进门时一次拿到已经在场的人的名字，之后每秒的坐标同步里不再带名字
-      for (const [ouid, oname] of msg.online || []) peers.ensure(ouid, oname);
+      for (const row of msg.online || []) {
+        if (Array.isArray(row)) peers.ensure(row[0], row[1], row[2]);
+      }
       rebuildObstacles();
       ui.status(0, graves.entries.size);
       if (state.sharedId && !state.sharedArrived) {
@@ -310,7 +329,7 @@ function connect() {
     },
     onPeerIn: (msg) => {
       // 有人走进来：先把名字记下，坐标等下一帧 peers 带过来
-      if (msg && msg.uid) peers.ensure(msg.uid, msg.name);
+      if (msg && msg.uid) peers.ensure(msg.uid, msg.name, msg.look);
     },
     onRaised: (grave) => {
       if (state.previewId) {
@@ -446,7 +465,7 @@ function connect() {
       );
     },
   });
-  net.connect({ uid: state.uid || "", name: state.name, pos: player.snapshot() }, state.token || null);
+  net.connect({ uid: state.uid || "", name: state.name, pos: player.snapshot(), look: ui.look }, state.token || null);
 }
 
 const localGraveBook = new Map();
@@ -943,6 +962,8 @@ function bindTouchControls() {
 
   document.getElementById("touch-act").addEventListener("click", tryInteract);
   document.getElementById("touch-list").addEventListener("click", openList);
+  document.getElementById("touch-kneel").addEventListener("click", () => player.toggleGesture("kneel"));
+  document.getElementById("touch-bow").addEventListener("click", () => player.playBow());
 }
 bindTouchControls();
 
@@ -980,6 +1001,7 @@ function frame() {
   world.update(dt, camera);
   graves.update(dt, camera);
   peers.update(dt, camera);
+  syncLocalBody();
 
   // 运行状态外显，便于在没有开发者工具的情况下核对
   if (state.started && now - diagAt > 400) {
@@ -1007,6 +1029,8 @@ function frame() {
       treeD: near ? +near.distance.toFixed(2) : null,
       panel: ui.openPanel || null,
       seated: player.sitting,
+      anim: player.anim(),
+      look: ui.look?.coat || "",
       locked: player.locked,
       sound: sound.ambientKind || "none",
       soundPan: +sound.ambientPan.toFixed(2),
@@ -1060,7 +1084,7 @@ function frame() {
       if (space) {
         ui.prompt("");
       } else {
-        ui.prompt("E　在这里立一座碑");
+        ui.prompt("E　在这里留下一座纪念");
       }
       ui.hot(false);
       sound.near(0);
@@ -1169,9 +1193,25 @@ window.addEventListener("resize", () => {
 
 ui.onSitHook = null;
 player.onSit = (sitting) => {
-  ui.seat(sitting);
+  ui.gesture(sitting ? "sit" : player.gesture);
   if (!sitting) player.focus();
 };
+player.onGesture = (name) => {
+  if (!player.sitting) ui.gesture(name);
+};
+
+function syncLocalBody() {
+  const anim = player.anim();
+  const ground = heightAt(player.pos.x, player.pos.z);
+  const lift = anim === "ghost" ? Math.max(0, player.pos.y - ground) : 0;
+  localFigure.root.position.set(player.pos.x, ground + lift, player.pos.z);
+  localFigure.root.rotation.y = player.yaw + Math.PI;
+  applyPose(localFigure, anim, performance.now() / 1000, 0.4);
+  // 平视时只露出衣摆和腿，免得胸口贴在镜头上；低头、下跪、鞠躬时才看见上半身
+  const showTorso = player.pitch > 0.28 || anim === "kneel" || anim === "bow" || anim === "sit";
+  localFigure.spine.visible = showTorso;
+  hands.setPose(anim, performance.now() / 1000, player.speed, player.pitch);
+}
 
 ui.onReadShown = null;
 

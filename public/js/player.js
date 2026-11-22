@@ -13,6 +13,8 @@ export class Player {
     this.grounded = true;
     this.sitting = false;
     this.crouching = false;
+    this.gesture = null;
+    this.gestureT = 0;
     this.speed = 0;
 
     this.yaw = 0;
@@ -29,6 +31,7 @@ export class Player {
     this.moved = false;
 
     this.onSit = null;
+    this.onGesture = null;
     this.onLockChange = null;
 
     this.bind();
@@ -43,8 +46,12 @@ export class Player {
       this.keys.add(code);
 
       if (code === "KeyF") this.toggleSit();
-      if (code === "KeyC" && !this.sitting) this.crouching = true;
+      if (code === "KeyC" && !this.sitting && this.gesture !== "kneel") this.crouching = true;
       if (code === "Space" && !this.sitting) this.jump();
+      if (code === "KeyG") this.toggleGesture("kneel");
+      if (code === "KeyZ") this.playBow();
+      if (code === "KeyV") this.toggleGesture("clasp");
+      if (code === "KeyB") this.toggleGesture("mourn");
     };
 
     const onKeyUp = (e) => {
@@ -121,6 +128,10 @@ export class Player {
       this.toggleSit();
       return;
     }
+    if (this.gesture === "kneel" || this.gesture === "bow") {
+      this.clearGesture();
+      return;
+    }
     if (this.grounded) {
       this.vy = RULES.player.jumpSpeed;
       this.grounded = false;
@@ -131,8 +142,40 @@ export class Player {
   toggleSit() {
     this.sitting = !this.sitting;
     this.crouching = false;
+    if (this.sitting) this.clearGesture(false);
     this.keys.clear();
     this.onSit?.(this.sitting);
+  }
+
+  /** 跪、合十、默哀可以按住不放。再按一次，或者走开，就收回来。 */
+  toggleGesture(name) {
+    if (!this.active) return;
+    if (this.sitting) this.toggleSit();
+    if (this.gesture === name) {
+      this.clearGesture();
+      return;
+    }
+    this.gesture = name;
+    this.gestureT = 0;
+    if (name === "kneel") this.crouching = false;
+    this.onGesture?.(name);
+  }
+
+  /** 鞠躬是一下，不是一种站法。鞠完自己起来。 */
+  playBow() {
+    if (!this.active || this.gesture === "kneel") return;
+    if (this.sitting) this.toggleSit();
+    this.gesture = "bow";
+    this.gestureT = 0;
+    this.crouching = false;
+    this.onGesture?.("bow");
+  }
+
+  clearGesture(notify = true) {
+    if (!this.gesture) return;
+    this.gesture = null;
+    this.gestureT = 0;
+    if (notify) this.onGesture?.(null);
   }
 
   forward() {
@@ -145,7 +188,8 @@ export class Player {
 
     let inputX = 0;
     let inputZ = 0;
-    if (this.active && !this.sitting) {
+    const rooted = this.sitting || this.gesture === "kneel" || this.gesture === "bow";
+    if (this.active && !rooted) {
       if (keys.has("KeyW") || keys.has("ArrowUp")) inputZ -= 1;
       if (keys.has("KeyS") || keys.has("ArrowDown")) inputZ += 1;
       if (keys.has("KeyA") || keys.has("ArrowLeft")) inputX -= 1;
@@ -162,6 +206,13 @@ export class Player {
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const wish = new THREE.Vector3().addScaledVector(forward, -inputZ).addScaledVector(right, inputX);
     if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(maxSpeed);
+    if (wish.lengthSq() > 0.01 && (this.gesture === "clasp" || this.gesture === "mourn")) {
+      this.clearGesture();
+    }
+    if (this.gesture === "bow") {
+      this.gestureT += dt;
+      if (this.gestureT > 1.65) this.clearGesture();
+    }
 
     const accel = Math.min(1, P.accel * dt);
     this.vel = this.vel || new THREE.Vector3();
@@ -233,8 +284,12 @@ export class Player {
       this.vy = 0;
     }
 
-    // 蹲下/起身/坐下时的视高
-    const targetEye = this.sitting ? P.seatHeight : this.crouching ? P.crouchHeight : P.eyeHeight;
+    // 蹲下、跪下、鞠躬时，眼睛跟着身体一起低下来
+    let targetEye = P.eyeHeight;
+    if (this.sitting) targetEye = P.seatHeight;
+    else if (this.gesture === "kneel") targetEye = P.kneelHeight;
+    else if (this.crouching) targetEye = P.crouchHeight;
+    else if (this.gesture === "bow") targetEye = P.eyeHeight - 0.28;
     this.eye += (targetEye - this.eye) * Math.min(1, dt * 9);
 
     // 走路的轻微摇晃
@@ -245,15 +300,25 @@ export class Player {
     const bobY = Math.sin(this.bob) * bobAmp;
     const bobX = Math.cos(this.bob * 0.5) * bobAmp * 0.6;
 
+    let pitchBias = 0;
+    if (this.gesture === "bow") pitchBias = 0.42;
+    else if (this.gesture === "kneel") pitchBias = 0.22;
+    else if (this.gesture === "mourn") pitchBias = 0.18;
+    else if (this.gesture === "clasp") pitchBias = 0.06;
+
     this.camera.position.set(this.pos.x + bobX, this.pos.y + this.eye + bobY, this.pos.z);
-    this.camera.rotation.set(this.pitch, this.yaw, Math.sin(this.bob * 0.5) * bobAmp * 0.9, "YXZ");
+    this.camera.rotation.set(this.pitch + pitchBias, this.yaw, Math.sin(this.bob * 0.5) * bobAmp * 0.9, "YXZ");
   }
 
   anim() {
     if (this.sitting) return "sit";
+    if (this.gesture === "kneel") return "kneel";
+    if (this.gesture === "bow") return "bow";
     if (!this.grounded && this.spaceHeld > 0.22) return "ghost";
     if (this.speed > RULES.player.walkSpeed + 1) return "run";
     if (this.speed > 0.4) return "walk";
+    if (this.gesture === "clasp") return "clasp";
+    if (this.gesture === "mourn") return "mourn";
     return "idle";
   }
 
