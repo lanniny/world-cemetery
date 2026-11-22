@@ -536,6 +536,10 @@ export class World {
     const beam = new THREE.Mesh(new THREE.BoxGeometry(4.7, 0.16, 0.28), darkMat);
     beam.position.set(0, gateY + 2.28, 82);
     this.scene.add(beam);
+    this.viewBlockers = [
+      { x: -2.15, z: 82, r: 0.55 },
+      { x: 2.15, z: 82, r: 0.55 },
+    ];
 
     const lanternSpots = [
       { x: -3.4, z: 76 },
@@ -567,6 +571,7 @@ export class World {
       light.position.set(spot.x, y + 1.4, spot.z);
       this.scene.add(light);
       this.lanterns.push(light);
+      this.viewBlockers.push({ x: spot.x, z: spot.z, r: 0.28 });
     }
 
     const flowerCount = 48;

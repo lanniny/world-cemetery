@@ -124,6 +124,7 @@ export class UI {
       offerCandle: $("offer-candle"),
       offerBird: $("offer-bird"),
       soundToggle: $("sound-toggle"),
+      viewToggle: $("view-toggle"),
       intro: $("intro"),
       readNotes: $("read-notes"),
       readClose: $("read-close"),
@@ -160,6 +161,7 @@ export class UI {
     this.burial = "stone";
     this.subject = "other";
     this.look = this.readLook();
+    this.view = localStorage.getItem("cc.view") === "third" ? "third" : "first";
     this.raiseCtx = { tree: null, treeTaken: "", lakeDist: Infinity, canWater: false, canTree: false };
     this.mode = "raise";
     this.editId = null;
@@ -190,6 +192,7 @@ export class UI {
     this.applySubjectCopy();
     this.bindCounters();
     this.bind();
+    this.syncViewButton();
   }
 
   /**
@@ -496,6 +499,7 @@ export class UI {
   bind() {
     const live = () => this.preview();
     this.el.soundToggle.onclick = () => this.onSoundToggle?.();
+    this.el.viewToggle.onclick = () => this.toggleView();
     for (const [btn, kind] of [
       [this.el.offerFlower, "flower"],
       [this.el.offerCandle, "candle"],
@@ -1096,6 +1100,28 @@ export class UI {
     this.el.toast.classList.add("show");
     clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => this.el.toast.classList.remove("show"), ms);
+  }
+
+  /** 视角只属于这台浏览器：第一人称是默认，第三人称能看见自己。 */
+  toggleView() {
+    this.setView(this.view === "third" ? "first" : "third");
+  }
+
+  setView(mode) {
+    this.view = mode === "third" ? "third" : "first";
+    localStorage.setItem("cc.view", this.view);
+    this.syncViewButton();
+    this.onView?.(this.view);
+  }
+
+  syncViewButton() {
+    const el = this.el.viewToggle;
+    if (!el) return;
+    const third = this.view === "third";
+    el.textContent = third ? "视角 · 第三" : "视角 · 第一";
+    el.classList.toggle("off", !third);
+    el.setAttribute("aria-pressed", String(third));
+    el.setAttribute("aria-label", third ? "切换到第一人称" : "切换到第三人称");
   }
 
   /** HUD 上那个开关的状态跟着声音走。 */

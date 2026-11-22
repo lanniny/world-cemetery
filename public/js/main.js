@@ -36,6 +36,11 @@ ui.onLook = (look) => {
 const sound = new Sound();
 const obstacles = [];
 const player = new Player(camera, canvas, obstacles);
+player.view = ui.view;
+player.viewBlockers = world.viewBlockers || [];
+ui.onView = (mode) => {
+  player.view = mode;
+};
 const TOUCH_MODE = new URLSearchParams(location.search).has("touch") ||
   !!window.matchMedia?.("(pointer: coarse)").matches;
 player.touchMode = TOUCH_MODE;
@@ -843,6 +848,12 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
+  if (e.code === "KeyQ") {
+    ui.toggleView();
+    ui.toast(ui.view === "third" ? "第三人称。你能看见自己。" : "第一人称。", 1600);
+    return;
+  }
+
   if (ui.isOpen()) return;
 
   if (e.code === "KeyH") {
@@ -964,6 +975,7 @@ function bindTouchControls() {
   document.getElementById("touch-list").addEventListener("click", openList);
   document.getElementById("touch-kneel").addEventListener("click", () => player.toggleGesture("kneel"));
   document.getElementById("touch-bow").addEventListener("click", () => player.playBow());
+  document.getElementById("touch-view").addEventListener("click", () => ui.toggleView());
 }
 bindTouchControls();
 
@@ -1031,6 +1043,8 @@ function frame() {
       seated: player.sitting,
       anim: player.anim(),
       look: ui.look?.coat || "",
+      view: player.view,
+      cam: +camera.position.distanceTo(player.pos).toFixed(2),
       locked: player.locked,
       sound: sound.ambientKind || "none",
       soundPan: +sound.ambientPan.toFixed(2),
@@ -1202,15 +1216,18 @@ player.onGesture = (name) => {
 
 function syncLocalBody() {
   const anim = player.anim();
+  const third = player.view === "third";
   const ground = heightAt(player.pos.x, player.pos.z);
   const lift = anim === "ghost" ? Math.max(0, player.pos.y - ground) : 0;
   localFigure.root.position.set(player.pos.x, ground + lift, player.pos.z);
   localFigure.root.rotation.y = player.yaw + Math.PI;
   applyPose(localFigure, anim, performance.now() / 1000, 0.4);
-  // 平视时只露出衣摆和腿，免得胸口贴在镜头上；低头、下跪、鞠躬时才看见上半身
-  const showTorso = player.pitch > 0.28 || anim === "kneel" || anim === "bow" || anim === "sit";
+  applyLook(localFigure, ui.look, third);
+  // 第一人称平视时只露出衣摆，免得胸口贴在镜头上。第三人称把整个人露出来。
+  const showTorso = third || player.pitch > 0.28 || anim === "kneel" || anim === "bow" || anim === "sit";
   localFigure.spine.visible = showTorso;
   hands.setPose(anim, performance.now() / 1000, player.speed, player.pitch);
+  if (third) hands.root.visible = false;
 }
 
 ui.onReadShown = null;

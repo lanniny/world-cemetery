@@ -178,16 +178,17 @@ export function createFigure(look, { local = false } = {}) {
   return fig;
 }
 
-export function applyLook(fig, look) {
+export function applyLook(fig, look, showHead = !fig.local) {
   const spec = palette(look);
   const hair = normalizeLook(look).hair;
   fig.coat.color.setHex(spec.coat);
   fig.trim.color.setHex(spec.trim);
   fig.skin.color.setHex(spec.skin);
   fig.hairMat.color.setHex(spec.hair);
-  fig.hairShort.visible = !fig.local && hair === "short";
-  fig.hairTied.visible = !fig.local && hair === "tied";
-  fig.hairHood.visible = !fig.local && hair === "hood";
+  fig.head.visible = !!showHead;
+  fig.hairShort.visible = showHead && hair === "short";
+  fig.hairTied.visible = showHead && hair === "tied";
+  fig.hairHood.visible = showHead && hair === "hood";
 }
 
 function resetPose(fig) {

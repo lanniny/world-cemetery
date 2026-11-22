@@ -27,7 +27,7 @@
     <div id="look-coats" class="look-row"></div>
     <div id="look-hairs" class="look-row hairs"></div>
     <button id="enter" class="boot-btn">走进雾里</button>
-    <p class="boot-hint">名字所有人都看得见；那句话谁都不会看见，也不会被上传。<br />W A S D 走 · 鼠标看 · G 跪拜 · Z 鞠躬 · V 合十 · B 默哀 · F 坐 · H 说明</p>
+    <p class="boot-hint">名字所有人都看得见；那句话谁都不会看见，也不会被上传。<br />W A S D 走 · 鼠标看 · Q 视角 · G 跪拜 · Z 鞠躬 · V 合十 · B 默哀 · F 坐 · H 说明</p>
   </div>
 </section>
 
@@ -41,6 +41,7 @@
   <div id="status" class="status">
     <span id="peer-count">0</span> 人在园中 · <span id="grave-count">0</span> 座纪念
     <button id="sound-toggle" class="sound-toggle" type="button" title="也可以按 M" aria-pressed="true" aria-label="关闭所有声音">声音 · 开</button>
+    <button id="view-toggle" class="sound-toggle" type="button" title="也可以按 Q" aria-pressed="false" aria-label="切换到第三人称">视角 · 第一</button>
   </div>
   <div id="guide" class="guide hidden"></div>
   <div id="compass" class="compass"></div>
@@ -244,6 +245,7 @@
       <tr><td>E</td><td>靠近纪念：读它。站在空地上：为任何逝去的事物立一座。</td></tr>
       <tr><td>R</td><td>站在前面：如果留过“口气”，可以对它说一句话。</td></tr>
       <tr><td>H</td><td>这张说明。</td></tr>
+      <tr><td>Q</td><td>第一人称和第三人称换着看。第三人称能看见自己的衣服、头发和跪拜。只记在这台浏览器里。</td></tr>
       <tr><td>M</td><td>把声音关掉，或者重新打开。</td></tr>
       <tr><td>Tab</td><td>看看附近有哪些碑，朝哪个方向走。</td></tr>
     </table>
@@ -275,6 +277,7 @@
     <button id="touch-act" class="touch-act">读 / 立</button>
     <button id="touch-kneel" class="touch-list">跪拜</button>
     <button id="touch-bow" class="touch-list">鞠躬</button>
+    <button id="touch-view" class="touch-list">视角</button>
     <button id="touch-list" class="touch-list">名录</button>
   </div>
 </div>
@@ -282,7 +285,7 @@
 <div id="intro" class="intro hidden">
   <p class="intro-main">这里是世界公墓。</p>
   <p class="intro-sub">走两步，找一座碑，站一会儿。</p>
-  <p class="intro-keys">WASD 走 · 鼠标看 · E 读 / 立 · G 跪拜 · Tab 名录</p>
+  <p class="intro-keys">WASD 走 · 鼠标看 · Q 视角 · E 读 / 立 · G 跪拜</p>
 </div>
 
 </body>
