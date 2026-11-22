@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { heightAt, isDeepWater } from "./world.js";
+import { heightAt, isDeepWater, isInLake } from "./world.js";
 import { RULES } from "./rules.js";
 
 export class Player {
@@ -33,6 +33,9 @@ export class Player {
     this.onSit = null;
     this.onGesture = null;
     this.onLockChange = null;
+    this.view = "first";
+    this.viewBlockers = [];
+    this.camDist = null;
 
     this.bind();
   }
@@ -306,8 +309,45 @@ export class Player {
     else if (this.gesture === "mourn") pitchBias = 0.18;
     else if (this.gesture === "clasp") pitchBias = 0.06;
 
-    this.camera.position.set(this.pos.x + bobX, this.pos.y + this.eye + bobY, this.pos.z);
-    this.camera.rotation.set(this.pitch + pitchBias, this.yaw, Math.sin(this.bob * 0.5) * bobAmp * 0.9, "YXZ");
+    this.placeCamera(bobX, bobY, bobAmp, pitchBias, dt);
+  }
+
+  /**
+   * 第一人称贴在眼睛上。第三人称用同一套朝向，只是把镜头退到肩后，
+   * 这样跪、鞠躬和走路都还是你自己的身体，不会另换一套电影机位。
+   */
+  placeCamera(bobX, bobY, bobAmp, pitchBias, dt) {
+    const eye = new THREE.Vector3(this.pos.x + bobX, this.pos.y + this.eye + bobY, this.pos.z);
+    const roll = Math.sin(this.bob * 0.5) * bobAmp * 0.9;
+    this.camera.rotation.set(this.pitch + pitchBias, this.yaw, roll, "YXZ");
+    if (this.view !== "third") {
+      this.camera.position.copy(eye);
+      this.camDist = null;
+      return;
+    }
+
+    this.camera.updateMatrixWorld();
+    const forward = new THREE.Vector3();
+    this.camera.getWorldDirection(forward);
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    const desired = eye.clone().addScaledVector(forward, -2.85).addScaledVector(right, 0.42);
+    desired.y += 0.2;
+
+    const offset = desired.sub(eye);
+    const len = offset.length() || 1;
+    const dir = offset.multiplyScalar(1 / len);
+    let limit = len;
+    const blockers = this.obstacles.concat(this.viewBlockers || []);
+    for (const ob of blockers) {
+      limit = Math.min(limit, circleLimit(eye, dir, limit, ob.x, ob.z, (ob.r || 0.35) + 0.3));
+    }
+    if (this.camDist == null) this.camDist = limit;
+    this.camDist += (limit - this.camDist) * Math.min(1, dt * 9);
+
+    const pos = eye.clone().addScaledVector(dir, Math.max(0.85, this.camDist));
+    const floor = cameraFloor(pos.x, pos.z);
+    if (pos.y < floor) pos.y = floor;
+    this.camera.position.copy(pos);
   }
 
   anim() {
@@ -330,4 +370,25 @@ export class Player {
       yaw: +this.yaw.toFixed(3),
     };
   }
+}
+
+function circleLimit(origin, dir, maxDist, cx, cz, radius) {
+  const ox = origin.x - cx;
+  const oz = origin.z - cz;
+  const flat = ox * ox + oz * oz;
+  if (flat < radius * radius) return 0.85;
+  const a = dir.x * dir.x + dir.z * dir.z;
+  if (a < 1e-5) return maxDist;
+  const b = 2 * (ox * dir.x + oz * dir.z);
+  const disc = b * b - 4 * a * (flat - radius * radius);
+  if (disc < 0) return maxDist;
+  const t = (-b - Math.sqrt(disc)) / (2 * a);
+  if (t < 0 || t > maxDist) return maxDist;
+  return Math.max(0.85, t - 0.12);
+}
+
+function cameraFloor(x, z) {
+  const ground = heightAt(x, z);
+  if (isInLake(x, z)) return Math.max(ground, RULES.world.waterLevel + 0.4);
+  return ground + 0.42;
 }
