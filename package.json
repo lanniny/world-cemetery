@@ -1,0 +1,16 @@
+{
+  "name": "cyber-cemetery",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "世界公墓：一座永远不闭园的第一人称联网墓园",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js",
+    "backup": "node scripts/backup.js"
+  },
+  "dependencies": {
+    "three": "^0.187.0",
+    "ws": "^8.23.0"
+  }
+}
