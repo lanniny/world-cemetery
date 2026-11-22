@@ -1,5 +1,5 @@
 import { formLabel, relicLabel, burialLabel } from "./graves.js";
-import { RULES } from "./rules.js";
+import { RULES, SUBJECTS, subjectMeta, LOOKS, normalizeLook } from "./rules.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -11,11 +11,39 @@ const OFFER_LABEL = { flower: "一朵花", candle: "一根蜡烛", bird: "一只
 function lifeSpan(g) {
   const b = /^\d{4}$/.test(g.born || "") ? g.born : "";
   const d = /^\d{4}$/.test(g.died || "") ? g.died : "";
+  const dated = g.subject && g.subject !== "person" && g.subject !== "pet";
   if (b && d) return `${b} — ${d}`;
-  if (b) return `生于 ${b}`;
-  if (d) return `卒于 ${d}`;
+  if (b) return dated ? `自 ${b}` : `生于 ${b}`;
+  if (d) return dated ? `至 ${d}` : `卒于 ${d}`;
   return "";
 }
+
+const GESTURE_TEXT = {
+  sit: "你坐下了。按 F 起身。",
+  kneel: "你跪在这里。按 G 起身。",
+  bow: "你鞠了一躬。",
+  clasp: "双手合十。按 V 放下。",
+  mourn: "你低着头。按 B 抬起头。",
+};
+
+/** 旧碑没标过纪念对象时，改碑表单仍用原来那套说法。 */
+const LEGACY_COPY = {
+  name: "这一座，留给谁",
+  namePh: "一个名字，或一个称呼",
+  life: "生卒（可留空）",
+  bornPh: "生于，如 1954",
+  diedPh: "卒于，如 2021",
+  lifeNote: "只写年份。写不出来就空着，碑上留白",
+  voice: "他说话的样子（可留空）",
+  voicePh: "比如：句子很短，总先叹一口气，爱说“算了”",
+  voiceNote: "填了，才能站在前面跟他说一句话",
+  photo: "给他放一张照片（可留空）",
+  audio: "留一段他的声音（可留空）",
+  epitaph: "上面只刻一行字",
+  story: "想记住的事（可留空）",
+  hints: ["他最后教会我的一件事是……", "我们最后一次说话是在……", "如果有下辈子，我想……"],
+  echo: "这不是他。是他留在这里的一点回声——知道的不多，也会记错。",
+};
 
 /** 上一次有人在这座碑前献光，是多久以前。 */
 function whenLit(at, lights) {
@@ -42,6 +70,16 @@ export class UI {
       graves: $("grave-count"),
       toast: $("toast"),
       raisePanel: $("raise-panel"),
+      raiseSubjects: $("raise-subjects"),
+      raiseNameLabel: $("raise-name-label"),
+      raiseLifeLabel: $("raise-life-label"),
+      raiseLifeNote: $("raise-life-note"),
+      raiseEpitaphLabel: $("raise-epitaph-label"),
+      raiseStoryLabel: $("raise-story-label"),
+      raiseVoiceLabel: $("raise-voice-label"),
+      raiseVoiceNote: $("raise-voice-note"),
+      raisePhotoLabel: $("raise-photo-label"),
+      raiseAudioLabel: $("raise-audio-label"),
       raiseName: $("raise-name"),
       raiseBorn: $("raise-born"),
       raiseDied: $("raise-died"),
@@ -73,6 +111,7 @@ export class UI {
       readPanel: $("read-panel"),
       readPhoto: $("read-photo"),
       readAuthor: $("read-author"),
+      readSubject: $("read-subject"),
       readName: $("read-name"),
       readLife: $("read-life"),
       readEpitaph: $("read-epitaph"),
@@ -104,7 +143,10 @@ export class UI {
       listClose: $("list-close"),
       guide: $("guide"),
       seatHint: $("seat-hint"),
+      lookCoats: $("look-coats"),
+      lookHairs: $("look-hairs"),
       echoPanel: $("echo-panel"),
+      echoNote: $("echo-note"),
       echoName: $("echo-name"),
       echoLog: $("echo-log"),
       echoInput: $("echo-input"),
@@ -116,6 +158,8 @@ export class UI {
     this.relic = "none";
     this.soundId = "none";
     this.burial = "stone";
+    this.subject = "other";
+    this.look = this.readLook();
     this.raiseCtx = { tree: null, treeTaken: "", lakeDist: Infinity, canWater: false, canTree: false };
     this.mode = "raise";
     this.editId = null;
@@ -141,7 +185,9 @@ export class UI {
     this.counterEls = [];
 
     this.buildChips();
-    this.buildStoryHints();
+    this.buildLookPicker();
+    this.buildStoryHints(subjectMeta("other").hints);
+    this.applySubjectCopy();
     this.bindCounters();
     this.bind();
   }
@@ -150,12 +196,7 @@ export class UI {
    * 大多数人对着"碑后面的事"这个空格写不出东西。
    * 给三个开头，点一下填进去，剩下的仍然由他自己写。
    */
-  buildStoryHints() {
-    const lines = [
-      "他最后教会我的一件事是……",
-      "我们最后一次说话是在……",
-      "如果有下辈子，我想……",
-    ];
+  buildStoryHints(lines) {
     this.el.storyHints.innerHTML = "";
     for (const line of lines) {
       const b = document.createElement("button");
@@ -201,7 +242,101 @@ export class UI {
     for (const update of this.counterEls) update();
   }
 
+  readLook() {
+    try {
+      return normalizeLook(JSON.parse(localStorage.getItem("cc.look") || "{}"));
+    } catch {
+      return normalizeLook(null);
+    }
+  }
+
+  persistLook() {
+    this.look = normalizeLook(this.look);
+    localStorage.setItem("cc.look", JSON.stringify(this.look));
+    this.onLook?.(this.look);
+    return this.look;
+  }
+
+  buildLookPicker() {
+    const paint = () => {
+      for (const btn of this.el.lookCoats.children) btn.classList.toggle("on", btn.dataset.id === this.look.coat);
+      for (const btn of this.el.lookHairs.children) btn.classList.toggle("on", btn.dataset.id === this.look.hair);
+    };
+    this.el.lookCoats.innerHTML = "";
+    for (const id of LOOKS.coats) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "swatch";
+      btn.dataset.id = id;
+      btn.title = LOOKS.coatLabel[id];
+      btn.setAttribute("aria-label", LOOKS.coatLabel[id]);
+      btn.style.background = "#" + LOOKS.palette[id].coat.toString(16).padStart(6, "0");
+      btn.onclick = () => {
+        this.look = { ...this.look, coat: id };
+        paint();
+        this.persistLook();
+      };
+      this.el.lookCoats.appendChild(btn);
+    }
+    this.el.lookHairs.innerHTML = "";
+    for (const id of LOOKS.hairs) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chip";
+      btn.dataset.id = id;
+      btn.textContent = LOOKS.hairLabel[id];
+      btn.onclick = () => {
+        this.look = { ...this.look, hair: id };
+        paint();
+        this.persistLook();
+      };
+      this.el.lookHairs.appendChild(btn);
+    }
+    paint();
+  }
+
+  copyForSubject() {
+    return subjectMeta(this.subject) || LEGACY_COPY;
+  }
+
+  applySubjectCopy() {
+    const meta = this.copyForSubject();
+    const set = (el, text) => {
+      if (el) el.textContent = text;
+    };
+    set(this.el.raiseNameLabel, meta.name);
+    set(this.el.raiseLifeLabel, meta.life);
+    set(this.el.raiseEpitaphLabel, meta.epitaph);
+    set(this.el.raiseStoryLabel, meta.story);
+    set(this.el.raiseVoiceLabel, meta.voice);
+    set(this.el.raisePhotoLabel, meta.photo);
+    set(this.el.raiseAudioLabel, meta.audio);
+    if (this.el.raiseName) this.el.raiseName.placeholder = meta.namePh;
+    if (this.el.raiseBorn) this.el.raiseBorn.placeholder = meta.bornPh;
+    if (this.el.raiseDied) this.el.raiseDied.placeholder = meta.diedPh;
+    if (this.el.raiseVoice) this.el.raiseVoice.placeholder = meta.voicePh;
+    if (this.el.raiseLifeNote) this.el.raiseLifeNote.innerHTML = `<span>${meta.lifeNote}</span>`;
+    if (this.el.raiseVoiceNote) this.el.raiseVoiceNote.innerHTML = `<span>${meta.voiceNote}</span>`;
+    this.buildStoryHints(meta.hints || LEGACY_COPY.hints);
+  }
+
   buildChips() {
+    this.el.raiseSubjects.innerHTML = "";
+    for (const subject of SUBJECTS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip";
+      b.dataset.id = subject.id;
+      b.textContent = subject.label;
+      b.onclick = () => {
+        this.subject = subject.id;
+        this.refreshChips();
+        this.applySubjectCopy();
+        this.preview();
+      };
+      this.el.raiseSubjects.appendChild(b);
+    }
+
     const forms = [
       ["slab", "石板"],
       ["pillar", "方柱"],
@@ -327,6 +462,7 @@ export class UI {
   }
 
   refreshChips() {
+    for (const b of this.el.raiseSubjects.children) b.classList.toggle("on", b.dataset.id === this.subject);
     for (const b of this.el.raiseForms.children) b.classList.toggle("on", b.dataset.id === this.form);
     for (const b of this.el.raisePhotoWhere.children) b.classList.toggle("on", b.dataset.id === this.photoOn);
     for (const b of this.el.raiseRelics.children) b.classList.toggle("on", b.dataset.id === this.relic);
@@ -389,6 +525,7 @@ export class UI {
         epitaph: this.el.raiseEpitaph.value.trim(),
         story: this.el.raiseStory.value.trim(),
         voice: this.el.raiseVoice.value.trim(),
+        subject: this.subject,
         photo: this.photoUrl || "",
         photoOn: this.photoOn,
         audio: this.audioUrl || "",
@@ -541,6 +678,8 @@ export class UI {
     this.echoTurns = 0;
     this.echoHistory = [];
     this.el.echoName.textContent = entry.grave.name;
+    const echoMeta = subjectMeta(entry.grave.subject);
+    if (this.el.echoNote) this.el.echoNote.textContent = echoMeta?.echo || LEGACY_COPY.echo;
     this.el.echoLog.innerHTML = "";
     this.el.echoInput.value = "";
     this.el.echoInput.disabled = false;
@@ -562,6 +701,7 @@ export class UI {
       epitaph: this.el.raiseEpitaph.value.trim(),
       story: this.el.raiseStory.value.trim(),
       voice: this.el.raiseVoice.value.trim(),
+      subject: this.subject,
       photo: this.photoUrl || "",
       photoOn: this.photoOn,
       form: this.form,
@@ -594,7 +734,7 @@ export class UI {
     this.el.raiseConfirm.setAttribute("aria-busy", String(this.raisePending));
     this.el.raiseConfirm.textContent = this.raisePending
       ? (editing ? "正在改…" : "正在立…")
-      : (editing ? "改好了" : "立碑");
+      : (editing ? "改好了" : "立下");
   }
 
   resetRaise() {
@@ -616,6 +756,7 @@ export class UI {
     this.relic = "none";
     this.soundId = "none";
     this.burial = "stone";
+    this.subject = "other";
     this.photoUrl = "";
     this.photoOn = "ground";
     this.audioUrl = "";
@@ -628,6 +769,7 @@ export class UI {
     this.el.raisePhotoHint.textContent = "会缩到 900 像素，立在碑前";
     this.el.raiseAudioHint.textContent = "走近碑的时候会响，走开就停";
     this.refreshChips();
+    this.applySubjectCopy();
     this.updateCounters();
     this.setRaisePending(false);
   }
@@ -768,8 +910,8 @@ export class UI {
     this.resetRaise();
     this.mode = "raise";
     this.editId = null;
-    this.el.raiseTag.textContent = "正在刻一块新碑";
-    this.el.raiseConfirm.textContent = "立碑";
+    this.el.raiseTag.textContent = "正在留下一座纪念";
+    this.el.raiseConfirm.textContent = "立下";
     this.openPanel = "raise";
     document.body.classList.add("panel-open");
     this.el.raisePanel.classList.remove("hidden");
@@ -799,6 +941,7 @@ export class UI {
     this.form = g.form || "slab";
     this.relic = g.relic || "none";
     this.burial = g.burial || "stone";
+    this.subject = subjectMeta(g.subject) ? g.subject : "";
     this.soundId = g.sound || "none";
     this.photoOn = g.photoOn === "face" ? "face" : "ground";
     this.photoUrl = g.photo || "";
@@ -814,6 +957,7 @@ export class UI {
       this.el.raiseAudioHint.textContent = "已经放着一小段，走近就会响。";
     }
     this.refreshChips();
+    this.applySubjectCopy();
     this.updateCounters();
     this.setRaisePending(false);
     this.openPanel = "raise";
@@ -837,7 +981,10 @@ export class UI {
   renderRead(entry, selfId) {
     if (!entry || !entry.grave) return;
     const g = entry.grave;
-    this.el.readAuthor.textContent = `${g.authorName || "无名者"} 立的碑${g.sealed ? " · 已沉睡" : ""}`;
+    this.el.readAuthor.textContent = `${g.authorName || "无名者"}留下的纪念${g.sealed ? " · 已沉睡" : ""}`;
+    const kind = subjectMeta(g.subject);
+    this.el.readSubject.textContent = kind ? `纪念 · ${kind.label}` : "";
+    this.el.readSubject.classList.toggle("hidden", !kind);
     this.el.readName.textContent = g.name;
     if (g.photo) {
       this.el.readPhoto.src = g.photo;
@@ -989,7 +1136,13 @@ export class UI {
   }
 
   seat(on) {
-    this.el.seatHint.classList.toggle("hidden", !on);
+    this.gesture(on ? "sit" : null);
+  }
+
+  gesture(name) {
+    const text = GESTURE_TEXT[name] || "";
+    this.el.seatHint.textContent = text;
+    this.el.seatHint.classList.toggle("hidden", !text);
   }
 
   toggleHelp(force) {
@@ -1019,6 +1172,7 @@ export class UI {
       ["tree", "木牌"],
       ["water", "纸船"],
       ["sky", "天灯"],
+      ...SUBJECTS.map((s) => [s.id, s.short]),
       ["mine", "只有我的"],
     ];
     this.el.listFilters.innerHTML = "";
@@ -1040,6 +1194,7 @@ export class UI {
     const rows = this.listAll.filter((g) => {
       if (this.listFilter === "all") return true;
       if (this.listFilter === "mine") return g.mine;
+      if (subjectMeta(this.listFilter)) return g.subject === this.listFilter;
       return (g.burial || "stone") === this.listFilter;
     });
 
@@ -1049,7 +1204,7 @@ export class UI {
       empty.className = "list-row empty";
       const text = document.createElement("span");
       text.className = "n";
-      text.textContent = "这一类还没有碑。";
+      text.textContent = "这一类还没有纪念。";
       empty.appendChild(text);
       this.el.listBody.appendChild(empty);
     }
@@ -1064,7 +1219,8 @@ export class UI {
 
       const d = document.createElement("span");
       d.className = "d";
-      const parts = [BURIAL_SHORT[g.burial || "stone"] || "石碑"];
+      const kind = subjectMeta(g.subject);
+      const parts = [kind ? kind.short : "未标明", BURIAL_SHORT[g.burial || "stone"] || "石碑"];
       parts.push(g.distance ? `${Math.round(g.distance)} 米` : "远方");
       if (g.lights) parts.push(`${g.lights} 次光`);
       const life = lifeSpan(g);

@@ -8,7 +8,7 @@ import { WebSocketServer } from "ws";
 import { Cemetery } from "./store.js";
 import { Accounts } from "./accounts.js";
 import { backupNow } from "../scripts/backup.js";
-import { RULES, RULESET_ID } from "../public/js/rules.js";
+import { RULES, RULESET_ID, normalizeLook, packLook } from "../public/js/rules.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -188,15 +188,22 @@ const readJsonBody = (req, max = 8192) =>
  * 这段提示词是这个功能的伦理边界，改它之前想清楚。
  */
 const buildEchoMessages = (grave, history, text) => {
+  const person = !grave.subject || grave.subject === "person";
   const system = [
-    `你是「${grave.name}」留在这个世界上的一段回声，不是这个人本身。`,
-    grave.voice ? `别人记得他说话的样子：${grave.voice}` : "",
-    grave.epitaph ? `他的碑上刻着：${grave.epitaph}` : "",
+    person
+      ? `你是「${grave.name}」留在这个世界上的一段回声，不是这个人本身。`
+      : `你是为「${grave.name}」留下的一段回声，不是那样东西、那段日子或那个人本身。`,
+    grave.voice ? (person ? `别人记得他说话的样子：${grave.voice}` : `别人记得它的样子：${grave.voice}`) : "",
+    grave.epitaph ? `留下的那一行字是：${grave.epitaph}` : "",
     "怎么说话：",
     "- 每次只说一两句，不超过四十个字，像真的在说话，不要写成文章。",
     "- 不要说自己是在扮演、是程序、是模型。",
-    "- 不要假装还活着，不要说“明天见”“等你回来”，不给时间、地址、电话、承诺。",
-    "- 被问到怎么走的、走了以后怎么样，用这个人的方式轻轻带过，不要细说。",
+    person
+      ? "- 不要假装还活着，不要说“明天见”“等你回来”，不给时间、地址、电话、承诺。"
+      : "- 不要假装它还在，不要说“明天见”“等你回来”，不给时间、地址、电话、承诺。",
+    person
+      ? "- 被问到怎么走的、走了以后怎么样，用这个人的方式轻轻带过，不要细说。"
+      : "- 被问到它怎么没的、后来怎么样，轻轻带过，不要编故事。",
     "- 不要编造具体的人名、日期、地点、事件；不记得就说不记得。",
   ]
     .filter(Boolean)
@@ -279,6 +286,8 @@ const graveFields = (input = {}) => ({
   // 生卒：只记年份，四位数。写不出来就空着。
   born: /^\d{4}$/.test(String(input.born || "")) ? String(input.born) : "",
   died: /^\d{4}$/.test(String(input.died || "")) ? String(input.died) : "",
+  // 纪念的是什么。空字符串是旧碑：没标过，就不要替它写成某一种。
+  subject: RULES.grave.subjectIds.includes(input.subject) ? input.subject : "",
 });
 
 /** 湖：水面那一圈。水葬的船必须落在水里，别的葬法不能漂在湖心。 */
@@ -681,6 +690,7 @@ wss.on("connection", (ws) => {
       players.set(uid, {
         ws,
         name,
+        look: normalizeLook(msg.look),
         x: px,
         y: num(msg.y, 1.6),
         z: pz,
@@ -703,9 +713,11 @@ wss.on("connection", (ws) => {
         rules: RULES,
         graves: visibleGraves(),
         // 名字只在进门时说一次，之后每秒八次的同步里不再重复
-        online: [...players.entries()].filter(([ouid]) => ouid !== uid).map(([ouid, op]) => [ouid, op.name]),
+        online: [...players.entries()]
+          .filter(([ouid]) => ouid !== uid)
+          .map(([ouid, op]) => [ouid, op.name, op.look]),
       });
-      broadcast({ t: "peerIn", uid, name }, uid);
+      broadcast({ t: "peerIn", uid, name, look: players.get(uid).look }, uid);
       return;
     }
 
@@ -717,7 +729,9 @@ wss.on("connection", (ws) => {
       p.y = num(msg.y, p.y);
       p.z = clampToWorld(num(msg.z, p.z));
       p.yaw = num(msg.yaw, p.yaw);
-      p.anim = ["idle", "walk", "run", "sit", "ghost"].includes(msg.anim) ? msg.anim : "walk";
+      p.anim = ["idle", "walk", "run", "sit", "ghost", "bow", "kneel", "clasp", "mourn"].includes(msg.anim)
+        ? msg.anim
+        : "walk";
       p.last = Date.now();
       // 站住不动才算"沉默"，挪动一点就重新计时
       if (Math.hypot(p.x - p.stillX, p.z - p.stillZ) > RULES.net.silenceMoveTolerance) {
@@ -917,7 +931,17 @@ wss.on("connection", (ws) => {
  * 影子同步。只发看得见的：雾把 72 米外的人吃掉，没必要为他们付带宽。
  * 用数组而不是对象，一个人一条只占几十字节——一百人在线时这是数量级的差别。
  */
-const ANIM_CODE = { idle: "i", walk: "w", run: "r", sit: "s", ghost: "g" };
+const ANIM_CODE = {
+  idle: "i",
+  walk: "w",
+  run: "r",
+  sit: "s",
+  ghost: "g",
+  bow: "b",
+  kneel: "k",
+  clasp: "c",
+  mourn: "m",
+};
 const peerRange2 = RULES.net.peerRange * RULES.net.peerRange;
 
 setInterval(() => {
@@ -930,7 +954,15 @@ setInterval(() => {
       const dx = op.x - p.x;
       const dz = op.z - p.z;
       if (dx * dx + dz * dz > peerRange2) continue;
-      rows.push([ouid, +op.x.toFixed(2), +op.y.toFixed(2), +op.z.toFixed(2), +op.yaw.toFixed(3), ANIM_CODE[op.anim] || "w"]);
+      rows.push([
+        ouid,
+        +op.x.toFixed(2),
+        +op.y.toFixed(2),
+        +op.z.toFixed(2),
+        +op.yaw.toFixed(3),
+        ANIM_CODE[op.anim] || "i",
+        packLook(op.look),
+      ]);
     }
     try {
       p.ws.send(`{"t":"peers","l":${JSON.stringify(rows)}}`);

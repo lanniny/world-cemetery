@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { heightAt, groundNormal, isInLake } from "./world.js";
-import { RULES } from "./rules.js";
+import { RULES, subjectMeta } from "./rules.js";
 
 const STONE_COLD = new THREE.Color(0x3c464b);
 const STONE_WARM = new THREE.Color(0x4a4038);
@@ -206,9 +206,10 @@ function weatherOffering(item, ageDays) {
 function lifeLine(grave) {
   const b = /^\d{4}$/.test(grave.born || "") ? grave.born : "";
   const d = /^\d{4}$/.test(grave.died || "") ? grave.died : "";
+  const dated = grave.subject && grave.subject !== "person" && grave.subject !== "pet";
   if (b && d) return `${b} — ${d}`;
-  if (b) return `生于 ${b}`;
-  if (d) return `卒于 ${d}`;
+  if (b) return dated ? `自 ${b}` : `生于 ${b}`;
+  if (d) return dated ? `至 ${d}` : `卒于 ${d}`;
   return "";
 }
 
@@ -245,8 +246,14 @@ export function makeFaceTexture(grave, opts = {}) {
 
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
+  const kind = subjectMeta(grave.subject);
 
   if (horizontal) {
+    if (kind) {
+      ctx.font = `${13 * k}px "Songti SC", "SimSun", serif`;
+      ctx.fillStyle = `rgba(186, 214, 206, ${0.72 * textAlpha})`;
+      ctx.fillText(kind.short, w / 2, h * 0.18);
+    }
     const nameSize = (chars.length > 8 ? 30 : chars.length > 6 ? 36 : 44) * k;
     ctx.font = `${nameSize}px "Songti SC", "SimSun", serif`;
     ctx.fillStyle = `rgba(16, 26, 28, ${0.6 * textAlpha})`;
@@ -277,7 +284,12 @@ export function makeFaceTexture(grave, opts = {}) {
   } else {
     // 碑上有照片时，照片占碑面顶部，名字往下让
     const hasPhoto = grave.photoOn === "face" && !!grave.photo;
-    const zoneTop = hasPhoto ? Math.round(h * 0.34) : 40;
+    const zoneTop = hasPhoto ? Math.round(h * 0.34) : kind ? 52 : 40;
+    if (kind && !hasPhoto) {
+      ctx.font = `13px "Songti SC", "SimSun", serif`;
+      ctx.fillStyle = `rgba(186, 214, 206, ${0.72 * textAlpha})`;
+      ctx.fillText(kind.short, w / 2, 28);
+    }
     const bottomLimit = h - 130;
     const nameRoom = Math.max(60, bottomLimit - zoneTop);
     let nameSize = chars.length > 7 ? 24 : chars.length > 5 ? 28 : hasPhoto ? 32 : 36;
